@@ -1,7 +1,186 @@
-# docx2md
+# docx2md 转换器
 
-## Placeholder
+将 Word `.docx` 文件转换为 Markdown，同时提取所有图片到 `assets/` 文件夹。
+保留标题层级、列表、表格、行内格式（粗体、斜体、代码）和阅读顺序。
+输出是**确定性**的（不做 AI 改写），适合作为知识库摄入的预处理步骤。
 
-Existing docx2md project will be moved here.
+## 适用场景
 
-> NOTE: This is a placeholder directory for migrating the existing docx2md project into mdcast-cli. It is intentionally empty for now.
+- 将 `.docx` 转为 `.md` + 图片，用于编辑、搜索、归档或重新排版
+- 知识库 / RAG 摄入前的预处理（确定性结构 —— 见下方输出契约）
+
+**不适用**：翻译文档、修改原始 `.docx`、转换 `.pdf` / `.pptx` 文件。
+
+## 快速开始
+
+### CLI
+
+```bash
+mdcast docx2md <input.docx> [output.md] [--asset-dir <dir>]
+```
+
+- `<output.md>` 可选，默认为输入文件同名 `.md`
+- 提取的图片放在 `<output_dir>/assets/`，旧内容会先被清除
+- stdout 输出 `{"md_path": "...", "by_page": {...}}` JSON，stderr 输出状态信息
+
+### 库函数
+
+```python
+from mdcast.converters.docx2md import convert
+
+md_path, by_page = convert("input.docx", "out.md", asset_dir="assets")
+# by_page == {1: ["rId4.png", ...], 2: [...], ...}
+```
+
+## 工作原理
+
+### 1. 条目提取
+
+转换器遍历 `Document.paragraphs`、`Document.tables` 和行内形状，提取以下类型：
+
+| 条目类型 | 处理方式 |
+|---------|---------|
+| **标题**（样式 `Heading N`） | 渲染为 `#` / `##` 等 —— 保留层级 |
+| **段落** | 纯文本，行内格式转为 Markdown（`**粗体**`、`*斜体*`、`` `代码` ``） |
+| **列表**（项目符号/编号） | 渲染为 Markdown 列表语法，支持嵌套缩进 |
+| **表格** | 逐行提取单元格文本，渲染为 GFM Markdown 表格 |
+| **行内图片** | 提取到 `assets/rIdX.ext` |
+| **分页符** | 渲染为 `---` 水平线 |
+
+### 2. 图片提取
+
+每个行内形状/图片写入 `assets/rId<number>.<ext>`，在 Markdown 中使用相对路径引用。主控/页眉/页脚图片被排除。
+
+EMF/WMF 矢量图会自动转为 PNG：
+- **Windows**：通过内置 GDI API 渲染（无需额外包）
+- **其他平台**：安装 `pillow-emf`（EMF）和/或 `PyMuPDF` 来转换。若无转换器可用，矢量文件保持原样，引用仍会输出（但可能无法在部分查看器中渲染）
+
+### 3. 文本清洗
+
+Word 文档常包含不可见控制字符。所有提取的文本经过清洗：
+
+| 字符 | 处理 |
+|-----|------|
+| `U+000B`（垂直制表符） | 替换为空格 |
+| `U+000C`（换页符） | 替换为空格 |
+| `U+00A0`（不间断空格） | 替换为空格 |
+| C0 控制字符（除 `\n\r\t`） | 移除 |
+| C1 控制字符（`U+0080–U+009F`） | 移除 |
+| Unicode 格式字符（`U+200B–U+200F`、`U+2028–U+202F`、`U+FEFF`） | 移除 |
+| 多个连续空格 | 折叠为一个 |
+
+### 4. 阅读顺序与标题
+
+条目按文档顺序处理（Word 文档的自然阅读顺序）。最高级标题成为文档标题（`#`），后续标题按相应层级渲染（`##` → `###` 等）。
+
+## 依赖
+
+```bash
+# 基本安装
+pip install mdcast-cli
+
+# 非 Windows 平台需要矢量图转换支持
+pip install "mdcast-cli[vector]"
+```
+
+- **必需**：`python-docx`、`Pillow`
+- **可选**（`[vector]` extras）：`pillow-emf`、`PyMuPDF` —— 用于非 Windows 平台的 EMF/WMF 转 PNG
+
+## 输出契约
+
+下游工具（知识库摄入、RAG 流水线、搜索索引）可依赖以下确定性输出结构。
+
+### 文件编码
+
+- **UTF-8 无 BOM**
+- 换行符：`\n`（LF）
+
+### 分节结构
+
+文档中每个标题生成一个以 `<!-- Page N -->` 锚点注释分隔的小节：
+
+```markdown
+<!-- Page 1 -->
+# 文档标题
+
+第一小节的正文内容…
+
+<!-- Page 2 -->
+## 第一个标题
+
+第二小节的正文内容…
+```
+
+**规则：**
+- `#`（H1）用于文档标题（Word "Title" 样式或 "Heading 1"）
+- `##`–`######`（H2–H6）直接对应 Word "Heading 2"–"Heading 6" 样式
+- 每个标题使页码计数器 +1
+- 非标题内容属于前一个标题的小节
+
+### 行内格式
+
+| Word 格式 | Markdown 输出 |
+|----------|--------------|
+| **粗体** | `**粗体文字**` |
+| *斜体* | `*斜体文字*` |
+| 粗体 + 斜体 | `***粗斜体***` |
+| `Courier New` 字体 | `` `行内代码` `` |
+| 超链接 | `[链接文字](url)` |
+
+### 列表
+
+**项目符号列表：**
+
+```markdown
+- 第一级
+  - 第二级
+    - 第三级
+```
+
+**编号列表：**
+
+```markdown
+1. 第一项
+1. 第二项
+   1. 嵌套项
+```
+
+### 表格
+
+表格渲染为 GitHub Flavored Markdown 表格：
+
+```markdown
+| 标题 1 | 标题 2 |
+|--------|--------|
+| 单元格 1 | 单元格 2 |
+```
+
+**规则：**
+- 列宽按每列最宽单元格对齐
+- 空单元格表示为空字符串
+- 尾部空白行被移除
+
+### 图片
+
+- 提取到输出 `.md` 文件旁的 `assets/` 目录
+- 使用相对路径引用：`![alt](assets/rIdX.png)`
+- 命名：`rId<number>.<ext>`（从 Word 文档的图片关系中提取）
+- 支持格式：PNG、JPEG、GIF、BMP、TIFF、EMF、WMF、SVG
+
+### 文本清洗
+
+所有提取的文本经过不可见控制字符清洗：
+
+| 字符 | 替换 |
+|-----|------|
+| U+000B（垂直制表符） | 空格 |
+| U+000C（换页符） | 空格 |
+| U+00A0（不间断空格） | 空格 |
+| C0 控制字符（除 `\n\r\t`） | 移除 |
+| C1 控制字符（U+0080–U+009F） | 移除 |
+| Unicode 格式字符 | 移除 |
+| 多个连续空格 | 折叠为一个 |
+
+### 不做 AI 改写
+
+输出是对原始 Word 文档文本的**忠实**提取。不进行摘要、改写或内容生成。

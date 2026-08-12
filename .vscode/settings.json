@@ -1,0 +1,10 @@
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "src/mdcast/converters/docx2md/tests",
+    "-s"
+  ],
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.testing.unittestEnabled": false,
+  "python.envFile": "${workspaceFolder}/.env"
+}

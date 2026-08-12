@@ -8,16 +8,22 @@ from __future__ import annotations
 
 import sys
 import types
-from typing import Any
+from typing import TYPE_CHECKING
 
 from lxml import etree  # pyright: ignore[reportAttributeAccessIssue, reportMissingTypeStubs]
 
-from mdcast.converters.docx2md.converter import _heading_level, _runs_markdown, _run_hyperlink_target
+from mdcast.converters.docx2md.converter import (
+    _heading_level,  # pyright: ignore[reportPrivateUsage]
+    _runs_markdown,  # pyright: ignore[reportPrivateUsage]
+)
+
+if TYPE_CHECKING:
+    from lxml.etree import _Element
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 
-def _paragraph_with_outline(val: str | None) -> Any:
+def _paragraph_with_outline(val: str | None) -> "_Element":
     """Build a minimal ``w:p`` element carrying an optional ``w:outlineLvl``."""
     el = etree.Element(f"{{{_W}}}p")
     pPr = etree.SubElement(el, f"{{{_W}}}pPr")
@@ -81,41 +87,41 @@ def test_heading_strips_bold_italic_but_keeps_code_and_link():
             self.text: str = text
             self.bold: bool = bold
             self.italic: bool = italic
-            self.font: Any = types.SimpleNamespace(name=font_name)
+            self.font: types.SimpleNamespace = types.SimpleNamespace(name=font_name)
             self.href: str | None = href
 
     # Patch the hyperlink resolver so we can inject href without real XML.
     import mdcast.converters.docx2md.converter as _conv
 
-    original = _conv._run_hyperlink_target
+    original = _conv._run_hyperlink_target  # pyright: ignore[reportPrivateUsage]
 
     def _resolve_href(run: _FakeRun) -> str | None:
         return run.href
 
-    _conv._run_hyperlink_target = _resolve_href
+    _conv._run_hyperlink_target = _resolve_href  # pyright: ignore[reportPrivateUsage]
 
     try:
         bold_run = _FakeRun("文档说明", bold=True)
-        assert _runs_markdown([bold_run], keep_emphasis=False) == "文档说明"
+        assert _runs_markdown([bold_run], keep_emphasis=False) == "文档说明"  # pyright: ignore[reportArgumentType]
 
         italic_run = _FakeRun("注意", italic=True)
-        assert _runs_markdown([italic_run], keep_emphasis=False) == "注意"
+        assert _runs_markdown([italic_run], keep_emphasis=False) == "注意"  # pyright: ignore[reportArgumentType]
 
         # code span kept
         code_run = _FakeRun("foo()", font_name="Courier New")
-        assert _runs_markdown([code_run], keep_emphasis=False) == "`foo()`"
+        assert _runs_markdown([code_run], keep_emphasis=False) == "`foo()`"  # pyright: ignore[reportArgumentType]
 
         # hyperlink kept
         link_run = _FakeRun("说明", href="https://example.com")
         assert (
-            _runs_markdown([link_run], keep_emphasis=False)
+            _runs_markdown([link_run], keep_emphasis=False)  # pyright: ignore[reportArgumentType]
             == "[说明](https://example.com)"
         )
 
         # keep_emphasis=True (default) still adds emphasis for body text
-        assert _runs_markdown([bold_run]) == "**文档说明**"
+        assert _runs_markdown([bold_run]) == "**文档说明**"  # pyright: ignore[reportArgumentType]
     finally:
-        _conv._run_hyperlink_target = original
+        _conv._run_hyperlink_target = original  # pyright: ignore[reportPrivateUsage]
 
 
 if __name__ == "__main__":

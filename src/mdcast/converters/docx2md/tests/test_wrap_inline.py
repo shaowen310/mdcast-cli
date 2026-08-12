@@ -15,7 +15,7 @@ Run with:
 
 from __future__ import annotations
 
-from mdcast.converters.docx2md.converter import _wrap_inline
+from mdcast.converters.docx2md.converter import _wrap_inline  # pyright: ignore[reportPrivateUsage]
 
 
 def _cases():
@@ -24,7 +24,7 @@ def _cases():
     return [
         # (desc, (text, bold, italic, code, href), expected)
         ("punct-bordered bold (full-width paren)", ("（重要）", True, False, False, None), " **（重要）** "),
-        ("punct-bordered bold (full-width quote)", (""引用"", True, False, False, None), " **"引用"** "),
+        ("punct-bordered bold (full-width quote)", ("“引用”", True, False, False, None), " **“引用”** "),
         ("leading punct only", ("。结尾", True, False, False, None), " **。结尾**"),
         ("plain letter borders, no space", ("重要", True, False, False, None), "**重要**"),
         ("plain letter borders italic", ("abc", False, True, False, None), "*abc*"),

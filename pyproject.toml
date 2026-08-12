@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdcast-cli"
+version = "0.1.0"
+description = "A CLI tool to convert Markdown to DOCX and vice versa"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+
+[project.scripts]
+# mdcast = "mdcast.cli:main"

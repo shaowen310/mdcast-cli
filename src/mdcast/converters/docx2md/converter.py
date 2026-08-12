@@ -18,7 +18,7 @@ import string
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Any, final
+from typing import TYPE_CHECKING, final
 
 try:
     from docx import Document
@@ -32,6 +32,15 @@ try:
     from PIL import Image as PILImage
 except ImportError:
     PILImage = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    from docx.text.run import Run
+    from lxml.etree import _Element
+
+# Inline style key for a run: (bold, italic, code_style, href)
+StyleKey = tuple[bool, bool, bool, str | None]
 
 
 # XML namespaces used for image detection (DrawingML + VML + relationships)
@@ -152,35 +161,35 @@ def _wrap_inline(
     return wrapped
 
 
-def _run_style(run: Any) -> tuple[bool, bool, bool, str | None]:
+def _run_style(run: Run) -> StyleKey:
     """Return the inline style key for *run* (used to merge like-formatted runs)."""
-    bold = run.bold
-    italic = run.italic
+    bold = bool(run.bold)
+    italic = bool(run.italic)
     # ``font.name`` may be None; treat as no special formatting
     code_style = run.font.name == "Courier New" if run.font.name else False
     href = _run_hyperlink_target(run)
     return (bold, italic, code_style, href)
 
 
-def _runs_markdown(runs: list[Any], keep_emphasis: bool = True) -> str:
+def _runs_markdown(runs: list[Run], keep_emphasis: bool = True) -> str:
     """Join paragraph runs into Markdown, merging consecutive runs that share
     identical inline formatting so adjacent bold runs aren't double-wrapped."""
-    segments: list[list[Any]] = []  # [[style_key, accumulated_text], ...]
+    segments: list[tuple[StyleKey, str]] = []
     for run in runs:
         text = _clean_text(run.text)
         if not text:
             continue  # empty run: drop, does not break merge boundary
         key = _run_style(run)
         if segments and segments[-1][0] == key:
-            segments[-1][1] += text
+            segments[-1] = (key, segments[-1][1] + text)
         else:
-            segments.append([key, text])
+            segments.append((key, text))
     return "".join(
         _wrap_inline(t, *k, keep_emphasis=keep_emphasis) for k, t in segments
     )
 
 
-def _run_hyperlink_target(run: Any) -> str | None:
+def _run_hyperlink_target(run: Run) -> str | None:
     """Return the hyperlink target URL for *run*, or ``None``.
 
     python-docx does not expose a ``Run.hyperlink`` attribute, so we walk
@@ -189,13 +198,13 @@ def _run_hyperlink_target(run: Any) -> str | None:
     """
     ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
     rel_ns = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
-    element = run._element
+    element = run._element  # pyright: ignore[reportPrivateUsage]
     while element is not None:
         if element.tag == f"{ns}hyperlink":
             rid = element.get(f"{rel_ns}id")
             if rid:
                 try:
-                    rel = run._parent.part.rels[rid]
+                    rel = run._parent.part.rels[rid]  # pyright: ignore[reportPrivateUsage]
                     return rel.target_ref
                 except Exception:  # noqa: BLE001
                     return None
@@ -207,9 +216,9 @@ def _run_hyperlink_target(run: Any) -> str | None:
 # List processing
 # ---------------------------------------------------------------------------
 
-def _list_level(paragraph: Any) -> int:
+def _list_level(paragraph: Paragraph) -> int:
     """Return the list nesting level (0-based) or -1 if not a list item."""
-    numPr = paragraph._element.find(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr")
+    numPr = paragraph._element.find(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr")  # pyright: ignore[reportPrivateUsage]
     if numPr is None:
         return -1
     ilvl = numPr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ilvl")
@@ -218,10 +227,10 @@ def _list_level(paragraph: Any) -> int:
     return 0
 
 
-def _is_numbered_list(paragraph: Any) -> bool:
+def _is_numbered_list(paragraph: Paragraph) -> bool:
     """Heuristic: if ``numPr`` → ``numFmt`` is ``decimal`` or ``lowerLetter``,
     treat as numbered list, otherwise bullet."""
-    numPr = paragraph._element.find(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr")
+    numPr = paragraph._element.find(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr")  # pyright: ignore[reportPrivateUsage]
     if numPr is None:
         return False
     numFmt = numPr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numFmt")
@@ -502,7 +511,7 @@ def _content_type_to_ext(content_type: str) -> str:
 
 
 def _paragraph_image_refs(
-    paragraph: Any, image_map: dict[str, str], asset_prefix: str
+    paragraph: Paragraph, image_map: dict[str, str], asset_prefix: str
 ) -> list[str]:
     """Return ``![Image](<asset_prefix>/...)`` references for images in a paragraph.
 
@@ -518,7 +527,7 @@ def _paragraph_image_refs(
     refs: list[str] = []
     blip_tag = f"{_DRAW_NS}blip"
     imgd_tag = f"{_VML_NS}imagedata"
-    for node in paragraph._element.iter():
+    for node in paragraph._element.iter():  # pyright: ignore[reportPrivateUsage]
         tag = node.tag
         if tag == blip_tag:
             rid = node.get(f"{_REL_NS}embed") or node.get(f"{_REL_NS}link")
@@ -548,7 +557,7 @@ def _img_filename(ref: str) -> str:
 # Table rendering
 # ---------------------------------------------------------------------------
 
-def _render_table(table: Any) -> list[str]:
+def _render_table(table: Table) -> list[str]:
     """Render a ``python-docx`` table as GFM Markdown table lines."""
     lines: list[str] = []
     rows = table.rows
@@ -605,7 +614,7 @@ def _render_table(table: Any) -> list[str]:
 _W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
-def _heading_level(style_name: str | None, para_element: Any = None) -> int:
+def _heading_level(style_name: str | None, para_element: _Element | None = None) -> int:
     """Return heading level (1-based, capped at 6) or 0 for non-headings.
 
     Detection order:
@@ -826,17 +835,21 @@ def convert(
     return output_path, by_page
 
 
-def _find_paragraph_by_element(paragraphs: list[Any], element: Any) -> Any:
+def _find_paragraph_by_element(
+    paragraphs: list[Paragraph], element: _Element
+) -> Paragraph | None:
     """Find the ``python-docx`` ``Paragraph`` whose ``_element`` matches."""
     for para in paragraphs:
-        if para._element is element:
+        if para._element is element:  # pyright: ignore[reportPrivateUsage]
             return para
     return None
 
 
-def _find_table_by_element(tables: list[Any], element: Any) -> Any:
+def _find_table_by_element(
+    tables: list[Table], element: _Element
+) -> Table | None:
     """Find the ``python-docx`` ``Table`` whose ``_element`` matches."""
     for table in tables:
-        if table._element is element:
+        if table._element is element:  # pyright: ignore[reportPrivateUsage]
             return table
     return None

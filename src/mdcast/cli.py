@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 
 def _cmd_docx2md(args: argparse.Namespace) -> None:
@@ -46,15 +45,15 @@ def main(argv: list[str] | None = None) -> None:
         "docx2md",
         help="Convert Word (.docx) to Markdown with image extraction",
     )
-    d2m.add_argument("input", type=str, help="Path to input .docx file")
-    d2m.add_argument(
+    _ = d2m.add_argument("input", type=str, help="Path to input .docx file")
+    _ = d2m.add_argument(
         "output",
         type=str,
         nargs="?",
         default=None,
         help="Path to output .md file (default: <input_stem>.md)",
     )
-    d2m.add_argument(
+    _ = d2m.add_argument(
         "--asset-dir",
         type=str,
         default=None,

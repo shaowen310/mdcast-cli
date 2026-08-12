@@ -1,17 +1,18 @@
-# docx2md 转换器
+# docx2md Converter
 
-将 Word `.docx` 文件转换为 Markdown，同时提取所有图片到 `assets/` 文件夹。
-保留标题层级、列表、表格、行内格式（粗体、斜体、代码）和阅读顺序。
-输出是**确定性**的（不做 AI 改写），适合作为知识库摄入的预处理步骤。
+Convert Word `.docx` files to Markdown while extracting all images into an
+`assets/` folder. Preserves heading hierarchy, lists, tables, inline formatting
+(bold, italic, code), and reading order.
 
-## 适用场景
+## When to use
 
-- 将 `.docx` 转为 `.md` + 图片，用于编辑、搜索、归档或重新排版
-- 知识库 / RAG 摄入前的预处理（确定性结构 —— 见下方输出契约）
+- Turn a `.docx` into `.md` + images for editing, search, archiving, or restyling
+- Preprocessing for knowledge-base / RAG ingestion (deterministic structure — see the output contract below)
 
-**不适用**：翻译文档、修改原始 `.docx`、转换 `.pdf` / `.pptx` 文件。
+**Do not** use for: translating documents, modifying the original `.docx`, or
+converting `.pdf` / `.pptx` files.
 
-## 快速开始
+## Quick start
 
 ### CLI
 
@@ -19,11 +20,11 @@
 mdcast docx2md <input.docx> [output.md] [--asset-dir <dir>]
 ```
 
-- `<output.md>` 可选，默认为输入文件同名 `.md`
-- 提取的图片放在 `<output_dir>/assets/`，旧内容会先被清除
-- stdout 输出 `{"md_path": "...", "by_page": {...}}` JSON，stderr 输出状态信息
+- `<output.md>` is optional; defaults to the source file's stem with `.md`
+- Extracted images go to `<output_dir>/assets/`; old contents are removed first
+- stdout prints `{"md_path": "...", "by_page": {...}}` JSON; stderr prints status
 
-### 库函数
+### Library
 
 ```python
 from mdcast.converters.docx2md import convert
@@ -32,155 +33,166 @@ md_path, by_page = convert("input.docx", "out.md", asset_dir="assets")
 # by_page == {1: ["rId4.png", ...], 2: [...], ...}
 ```
 
-## 工作原理
+## How it works
 
-### 1. 条目提取
+### 1. Item extraction
 
-转换器遍历 `Document.paragraphs`、`Document.tables` 和行内形状，提取以下类型：
+The converter walks `Document.paragraphs`, `Document.tables`, and inline
+shapes, extracting these item types:
 
-| 条目类型 | 处理方式 |
-|---------|---------|
-| **标题**（样式 `Heading N`） | 渲染为 `#` / `##` 等 —— 保留层级 |
-| **段落** | 纯文本，行内格式转为 Markdown（`**粗体**`、`*斜体*`、`` `代码` ``） |
-| **列表**（项目符号/编号） | 渲染为 Markdown 列表语法，支持嵌套缩进 |
-| **表格** | 逐行提取单元格文本，渲染为 GFM Markdown 表格 |
-| **行内图片** | 提取到 `assets/rIdX.ext` |
-| **分页符** | 渲染为 `---` 水平线 |
+| Item type | What happens |
+|-----------|-------------|
+| **Heading** (style `Heading N`) | Rendered as `#` / `##` etc. — preserves hierarchy |
+| **Paragraph** | Plain text with inline formatting converted to Markdown (`**bold**`, `*italic*`, `` `code` ``) |
+| **List** (bulleted / numbered) | Rendered as proper Markdown list syntax with nesting |
+| **Table** | Cell text extracted row-by-row, rendered as a GFM Markdown table |
+| **Inline image** | Extracted to `assets/rIdX.ext` |
+| **Page break** | Rendered as a `---` horizontal rule |
 
-### 2. 图片提取
+### 2. Image extraction
 
-每个行内形状/图片写入 `assets/rId<number>.<ext>`，在 Markdown 中使用相对路径引用。主控/页眉/页脚图片被排除。
+Each inline shape / picture is written to `assets/rId<number>.<ext>` with a
+relative reference in the Markdown output. Master/header/footer images are
+excluded.
 
-EMF/WMF 矢量图会自动转为 PNG：
-- **Windows**：通过内置 GDI API 渲染（无需额外包）
-- **其他平台**：安装 `pillow-emf`（EMF）和/或 `PyMuPDF` 来转换。若无转换器可用，矢量文件保持原样，引用仍会输出（但可能无法在部分查看器中渲染）
+EMF/WMF vector images are converted to PNG automatically:
+- **Windows**: rendered via the built-in GDI API (no extra package needed)
+- **Other platforms**: install `pillow-emf` (EMF) and/or `PyMuPDF` to convert.
+  If no converter is available, the vector file is left as-is and the reference
+  is still emitted (but may not render in all viewers)
 
-### 3. 文本清洗
+### 3. Text cleaning
 
-Word 文档常包含不可见控制字符。所有提取的文本经过清洗：
+Word documents frequently contain invisible control characters. All extracted
+text passes through a cleaning pass:
 
-| 字符 | 处理 |
-|-----|------|
-| `U+000B`（垂直制表符） | 替换为空格 |
-| `U+000C`（换页符） | 替换为空格 |
-| `U+00A0`（不间断空格） | 替换为空格 |
-| C0 控制字符（除 `\n\r\t`） | 移除 |
-| C1 控制字符（`U+0080–U+009F`） | 移除 |
-| Unicode 格式字符（`U+200B–U+200F`、`U+2028–U+202F`、`U+FEFF`） | 移除 |
-| 多个连续空格 | 折叠为一个 |
+| Character | Treatment |
+|-----------|-----------|
+| `U+000B` (vertical tab) | Replaced with space |
+| `U+000C` (form feed) | Replaced with space |
+| `U+00A0` (non-breaking space) | Replaced with space |
+| C0 controls (except `\n\r\t`) | Removed |
+| C1 controls (`U+0080–U+009F`) | Removed |
+| Unicode format chars (`U+200B–U+200F`, `U+2028–U+202F`, `U+FEFF`) | Removed |
+| Multiple consecutive spaces | Collapsed to one |
 
-### 4. 阅读顺序与标题
+### 4. Reading order & headings
 
-条目按文档顺序处理（Word 文档的自然阅读顺序）。最高级标题成为文档标题（`#`），后续标题按相应层级渲染（`##` → `###` 等）。
+Items are processed in document order (the natural reading order of a Word
+document). The highest-level heading becomes the document title (`#`), with
+subsequent headings rendered at their appropriate level (`##` → `###` etc.).
 
-## 依赖
+## Dependencies
 
 ```bash
-# 基本安装
+# Base install
 pip install mdcast-cli
 
-# 非 Windows 平台需要矢量图转换支持
+# Non-Windows platforms need vector conversion support
 pip install "mdcast-cli[vector]"
 ```
 
-- **必需**：`python-docx`、`Pillow`
-- **可选**（`[vector]` extras）：`pillow-emf`、`PyMuPDF` —— 用于非 Windows 平台的 EMF/WMF 转 PNG
+- **Required**: `python-docx`, `Pillow`
+- **Optional** (`[vector]` extras): `pillow-emf`, `PyMuPDF` — for EMF/WMF → PNG conversion on non-Windows platforms
 
-## 输出契约
+## Output contract
 
-下游工具（知识库摄入、RAG 流水线、搜索索引）可依赖以下确定性输出结构。
+Downstream tools (knowledge-base ingestion, RAG pipelines, search indexing) can
+rely on the following deterministic output structure.
 
-### 文件编码
+### File encoding
 
-- **UTF-8 无 BOM**
-- 换行符：`\n`（LF）
+- **UTF-8 without BOM**
+- Line endings: `\n` (LF)
 
-### 分节结构
+### Section structure
 
-文档中每个标题生成一个以 `<!-- Page N -->` 锚点注释分隔的小节：
+Every heading in the document produces a section delimited by a `<!-- Page N -->`
+anchor comment:
 
 ```markdown
 <!-- Page 1 -->
-# 文档标题
+# Document Title
 
-第一小节的正文内容…
+Content for the first section…
 
 <!-- Page 2 -->
-## 第一个标题
+## First Heading
 
-第二小节的正文内容…
+Content for the second section…
 ```
 
-**规则：**
-- `#`（H1）用于文档标题（Word "Title" 样式或 "Heading 1"）
-- `##`–`######`（H2–H6）直接对应 Word "Heading 2"–"Heading 6" 样式
-- 每个标题使页码计数器 +1
-- 非标题内容属于前一个标题的小节
+**Rules:**
+- `#` (H1) is used for the document title (Word "Title" style or "Heading 1")
+- `##`–`######` (H2–H6) map directly to Word "Heading 2"–"Heading 6" styles
+- Each heading increments the page counter by 1
+- Non-heading content belongs to the preceding heading's section
 
-### 行内格式
+### Inline formatting
 
-| Word 格式 | Markdown 输出 |
-|----------|--------------|
-| **粗体** | `**粗体文字**` |
-| *斜体* | `*斜体文字*` |
-| 粗体 + 斜体 | `***粗斜体***` |
-| `Courier New` 字体 | `` `行内代码` `` |
-| 超链接 | `[链接文字](url)` |
+| Word Formatting | Markdown Output |
+|-----------------|-----------------|
+| **Bold** | `**bold text**` |
+| *Italic* | `*italic text*` |
+| Bold + Italic | `***bold italic***` |
+| `Courier New` font | `` `inline code` `` |
+| Hyperlink | `[link text](url)` |
 
-### 列表
+### Lists
 
-**项目符号列表：**
+**Bulleted lists:**
 
 ```markdown
-- 第一级
-  - 第二级
-    - 第三级
+- Item level 1
+  - Item level 2
+    - Item level 3
 ```
 
-**编号列表：**
+**Numbered lists:**
 
 ```markdown
-1. 第一项
-1. 第二项
-   1. 嵌套项
+1. First item
+1. Second item
+   1. Nested item
 ```
 
-### 表格
+### Tables
 
-表格渲染为 GitHub Flavored Markdown 表格：
+Tables are rendered as GitHub Flavored Markdown tables:
 
 ```markdown
-| 标题 1 | 标题 2 |
-|--------|--------|
-| 单元格 1 | 单元格 2 |
+| Header 1 | Header 2 |
+|----------|----------|
+| Cell 1   | Cell 2   |
 ```
 
-**规则：**
-- 列宽按每列最宽单元格对齐
-- 空单元格表示为空字符串
-- 尾部空白行被移除
+**Rules:**
+- Column widths are padded to align with the widest cell per column
+- Empty cells are represented as empty strings
+- Trailing blank rows are dropped
 
-### 图片
+### Images
 
-- 提取到输出 `.md` 文件旁的 `assets/` 目录
-- 使用相对路径引用：`![alt](assets/rIdX.png)`
-- 命名：`rId<number>.<ext>`（从 Word 文档的图片关系中提取）
-- 支持格式：PNG、JPEG、GIF、BMP、TIFF、EMF、WMF、SVG
+- Extracted to the `assets/` directory next to the output `.md` file
+- Referenced with relative paths: `![alt](assets/rIdX.png)`
+- Naming: `rId<number>.<ext>` (as extracted from the Word document's image relationships)
+- Supported formats: PNG, JPEG, GIF, BMP, TIFF, EMF, WMF, SVG
 
-### 文本清洗
+### Text cleaning
 
-所有提取的文本经过不可见控制字符清洗：
+All extracted text is cleaned of invisible control characters:
 
-| 字符 | 替换 |
-|-----|------|
-| U+000B（垂直制表符） | 空格 |
-| U+000C（换页符） | 空格 |
-| U+00A0（不间断空格） | 空格 |
-| C0 控制字符（除 `\n\r\t`） | 移除 |
-| C1 控制字符（U+0080–U+009F） | 移除 |
-| Unicode 格式字符 | 移除 |
-| 多个连续空格 | 折叠为一个 |
+| Character | Replacement |
+|-----------|-------------|
+| U+000B (vertical tab) | Space |
+| U+000C (form feed) | Space |
+| U+00A0 (non-breaking space) | Space |
+| C0 controls (except `\n\r\t`) | Removed |
+| C1 controls (U+0080–U+009F) | Removed |
+| Unicode format characters | Removed |
+| Multiple consecutive spaces | Collapsed to one |
 
-### 不做 AI 改写
+### No AI rewriting
 
-输出是对原始 Word 文档文本的**忠实**提取。不进行摘要、改写或内容生成。
+The output is a **faithful** extraction of the original Word document's text.
+No summarization, rephrasing, or content generation is performed.

@@ -397,7 +397,7 @@ def _md_relpath(target: Path, base: Path) -> str:
 def _shape_text(shape: Shape) -> str:
     if not shape.has_text_frame:
         return ''
-    paras = []
+    paras: list[str] = []
     for p in shape.text_frame.paragraphs:
         txt = ''.join(r.text for r in p.runs)
         if not txt and p.text:
@@ -415,7 +415,7 @@ def _collect_items(shape: Shape, page: int, offset_top: int = 0, offset_left: in
     """
     top = offset_top + _shape_top(shape)
     left = offset_left + _shape_left(shape)
-    items = []
+    items: list[SlideItem] = []
     st = shape.shape_type
     if st == GROUP:
         for sub in shape.shapes:
@@ -436,10 +436,10 @@ def _collect_items(shape: Shape, page: int, offset_top: int = 0, offset_left: in
                       'top': top, 'left': left, 'width': w, 'height': hgt,
                       'shape': shape})
     elif st == TABLE:
-        rows_data = []
+        rows_data: list[list[str]] = []
         num_cols = 0
         for row in shape.table.rows:
-            cells = []
+            cells: list[str] = []
             for cell in row.cells:
                 # Flatten newlines inside table cells — Markdown table rows are
                 # single-line; embedded \n / \r would break the row across
@@ -486,7 +486,7 @@ def _format_table_markdown(rows: list[list[str]]) -> str:
         return ''
 
     # Build the header + separator row + data rows.
-    lines = []
+    lines: list[str] = []
     lines.append('| ' + ' | '.join(normalised[0]) + ' |')
     lines.append('| ' + ' | '.join(['---'] * num_cols) + ' |')
     for row in normalised[1:]:

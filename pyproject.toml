@@ -36,6 +36,3 @@ reportTypedDictNotRequiredAccess = false
 reportExplicitAny = false
 reportAny = false
 reportUnknownMemberType = false
-reportUnknownVariableType = false
-reportUnknownArgumentType = false
-reportUnknownParameterType = false

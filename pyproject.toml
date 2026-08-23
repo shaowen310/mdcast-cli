@@ -26,3 +26,13 @@ mdcast = "mdcast.cli:main"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests", "src/mdcast/converters/docx2md/tests"]
+
+[tool.basedpyright]
+# Relax rules that only flag untyped third-party libs (python-pptx, lxml)
+# and deliberately-optional TypedDict fields used throughout the converters.
+# These are not real code defects, so they're silenced project-wide to keep
+# the IDE/linter output focused on genuine issues.
+reportMissingImports = false
+reportMissingModuleSource = false
+reportTypedDictNotRequiredAccess = false
+reportExplicitAny = false

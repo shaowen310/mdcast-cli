@@ -92,13 +92,14 @@ md_path, by_page = convert("input.pptx", "out.md", asset_dir="assets")
 # by_page == {1: ["page-01-img-01.png", ...], 2: [...], ...}
 ```
 
+pptx2md 的确定性输出结构（Slide 边界、分块策略、字段元数据、图片与编码约定、禁止改写等）已写入其转换器专属文档，详见 [pptx2md README · Output specification](src/mdcast/converters/pptx2md/README.md#output-specification)。
+
 ## 输出契约
 
-docx2md / pptx2md 转换器提供**确定性**输出（不做 AI 改写），输出结构稳定可靠，适合作为知识库摄入、RAG 流水线的预处理步骤。详见 [docx2md README](src/mdcast/converters/docx2md/README.md) 与 [pptx2md README](src/mdcast/converters/pptx2md/README.md)。
+docx2md / pptx2md 转换器提供**确定性**输出（不做 AI 改写），输出结构稳定可靠，适合作为知识库摄入、RAG 流水线的预处理步骤。pptx2md 的详细输出规范见 [pptx2md README](src/mdcast/converters/pptx2md/README.md#output-specification)；docx2md 详见 [docx2md README](src/mdcast/converters/docx2md/README.md)。
 
 ## Roadmap
 
 - [x] `docx2md` — Word (.docx) 转 Markdown
 - [x] `pptx2md` — PowerPoint (.pptx) 转 Markdown
-- [ ] `md2docx` — Markdown 转 Word (.docx)
 - [ ] 共享工具与格式辅助函数

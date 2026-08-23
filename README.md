@@ -114,7 +114,7 @@ ingestion and RAG pipelines. The detailed `pptx2md` specification is in the
 - [x] Shared utilities and formatting helpers
       - Extracted common helpers `clean_text()`, `rel_path()` (relative-path normalization), and `prepare_asset_dir()` into `mdcast/converters/common.py`; both converters are wired to them
       - Image naming and `<!-- Slide N -->` emission are kept converter-specific (their sources differ — docx keys by `rId`/content-type, pptx by `page-XX-img-YY`/blob)
+- [x] Unified CLI entry point `mdcast <format>2md ...` (both converters routed through `mdcast.cli`; legacy `pptx2md` script removed)
 - [ ] `xlsx2md` — Excel (.xlsx) to Markdown (tables / multiple sheets)
-- [ ] Unified CLI entry point `mdcast <format>2md ...` (currently split per converter)
 - [ ] Optional speaker-notes extraction (pptx2md already documents a `python-pptx` reference implementation)
 - [ ] Output validator: assert the deterministic contract (unique & monotonically increasing anchors, all image references resolvable) for CI

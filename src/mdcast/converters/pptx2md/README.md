@@ -34,9 +34,6 @@ md_path, by_page = convert('input.pptx', 'out.md', asset_dir='assets')
 ```bash
 # via the mdcast command
 mdcast pptx2md <input.pptx> [output.md] [--asset-dir <dir>]
-
-# or run the script directly
-python -m mdcast.converters.pptx2md.scripts.pptx2md <input.pptx> [output.md] [--asset-dir <dir>]
 ```
 
 ## How it works
@@ -280,6 +277,5 @@ Without it, diagram slides fall back to structured text output.
 
 - `converter.py` — main converter (item extraction, brand filtering,
   table rendering, diagram detection + LibreOffice rendering / swimlane fallback)
-- `scripts/pptx2md.py` — CLI entry point (thin wrapper around `convert`)
 - `references/decorative_keywords.txt` — title keywords whose standalone
   decorative pictures are dropped on non-diagram slides (edit per deck)

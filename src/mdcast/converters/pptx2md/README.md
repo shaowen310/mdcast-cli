@@ -157,7 +157,7 @@ top-to-bottom, left-to-right reading order. The first short text per slide
 
 ### Why not markitdown[pptx]?
 
-`markitdown` writes image references like `![alt](图片28.jpg)` but **does
+`markitdown` writes image references like `![alt](img28.jpg)` but **does
 not** extract the image binary — the reference name (Chinese) does not match
 the actual file inside the zip. All links are broken. `python-pptx` walking
 the shape tree directly is the only reliable approach.

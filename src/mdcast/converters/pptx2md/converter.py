@@ -36,13 +36,14 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import shutil
 import subprocess
 import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
+
+from mdcast.converters.common import clean_text, prepare_asset_dir, rel_path
 
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
@@ -345,55 +346,6 @@ def _shape_left(shape: Shape) -> int:
         return 0
 
 
-def _clean_text(text: str) -> str:
-    """Remove or replace unreadable/invisible Unicode characters from extracted text.
-
-    PowerPoint text (especially via python-pptx) often contains control characters
-    that are invisible in PowerPoint but render as garbled boxes or symbols in
-    markdown output. This function sanitizes them so the output is clean text.
-
-    Characters handled:
-    - U+000B (vertical tab / manual line break within a paragraph) → space
-    - U+000C (form feed) → space
-    - U+00A0 (non-breaking space) → regular space
-    - C0 control chars (U+0000–U+0008, U+000E–U+001F, U+007F) → stripped
-    - C1 control chars (U+0080–U+009F) → stripped
-    - Unicode format chars (U+200B–U+200F, U+2028–U+202F, U+FEFF) → stripped
-    - Multiple consecutive spaces → collapsed to single space
-    """
-    if not text:
-        return text
-
-    # Replace common PPT control characters with a space.
-    text = text.replace('\u000b', ' ')   # vertical tab (manual line break within paragraph)
-    text = text.replace('\u000c', ' ')   # form feed
-    text = text.replace('\u00a0', ' ')   # non-breaking space
-
-    # Strip other C0 control characters (keep \n, \r, \t which are legit).
-    text = re.sub(r'[\x00-\x08\x0e-\x1f\x7f]', '', text)
-
-    # Strip C1 control characters.
-    text = re.sub(r'[\x80-\x9f]', '', text)
-
-    # Strip Unicode format / invisible characters.
-    text = re.sub(r'[\u200b-\u200f\u2028-\u202f\ufeff]', '', text)
-
-    # Collapse multiple consecutive spaces (but keep intentional line breaks).
-    text = re.sub(r'[ \t]+', ' ', text)
-
-    return text.strip()
-
-
-def _md_relpath(target: Path, base: Path) -> str:
-    """Return a relative path from *base* to *target*, using forward slashes.
-
-    Markdown image references require POSIX-style separators (``/``), but
-    ``os.path.relpath`` on Windows produces backslashes (``\\``).  This helper
-    normalises the result so image links work consistently across platforms.
-    """
-    return os.path.relpath(target, base).replace('\\', '/')
-
-
 def _shape_text(shape: Shape) -> str:
     if not shape.has_text_frame:
         return ''
@@ -403,7 +355,7 @@ def _shape_text(shape: Shape) -> str:
         if not txt and p.text:
             txt = p.text
         paras.append(txt)
-    return _clean_text('\n'.join(paras).strip())
+    return clean_text('\n'.join(paras).strip(), keep_newlines=True)
 
 
 def _collect_items(shape: Shape, page: int, offset_top: int = 0, offset_left: int = 0) -> list[SlideItem]:
@@ -444,7 +396,7 @@ def _collect_items(shape: Shape, page: int, offset_top: int = 0, offset_left: in
                 # Flatten newlines inside table cells — Markdown table rows are
                 # single-line; embedded \n / \r would break the row across
                 # multiple lines and render as a dangling orphan line.
-                txt = _clean_text(cell.text.replace('\n', ' ').replace('\r', ' '))
+                txt = clean_text(cell.text.replace('\n', ' ').replace('\r', ' '), keep_newlines=True)
                 cells.append(txt)
             if len(cells) > num_cols:
                 num_cols = len(cells)
@@ -908,11 +860,7 @@ def convert(input_pptx: str, output_md: str | None = None,
     asset_root = Path(asset_dir) if asset_dir is not None else (md_path.parent / "assets")
     if not asset_root.is_absolute():
         asset_root = (md_path.parent / asset_root).resolve()
-    if asset_root.exists():
-        for f in asset_root.iterdir():
-            if f.is_file():
-                f.unlink()
-    asset_root.mkdir(parents=True, exist_ok=True)
+    prepare_asset_dir(asset_root)
 
     prs: Shape = Presentation(str(src))
     image_index: list[ImageRef] = []
@@ -1070,7 +1018,7 @@ def convert(input_pptx: str, output_md: str | None = None,
                 # The flowchart itself is left to the cropped rendered image;
                 # its nodes are not reliably extractable as text, so we attach
                 # the picture rather than attempt a (high-error) swimlane parse.
-                rel = _md_relpath(asset_root / rendered_file, md_path.parent)
+                rel = rel_path(md_path.parent, asset_root / rendered_file)
                 md_lines.append('')
                 md_lines.append(f'![Image]({rel})')
 
@@ -1094,7 +1042,7 @@ def convert(input_pptx: str, output_md: str | None = None,
                     with open(out_path, 'wb') as f:
                         _ = f.write(it['shape'].image.blob)
                     image_index.append({'page': pi, 'idx': img_no, 'file': new_name})
-                    rel2 = _md_relpath(asset_root / new_name, md_path.parent)
+                    rel2 = rel_path(md_path.parent, asset_root / new_name)
                     md_lines.append('')
                     md_lines.append(f'![Image]({rel2})')
                 image_index.append({'page': pi, 'idx': 0, 'file': rendered_file})
@@ -1119,7 +1067,7 @@ def convert(input_pptx: str, output_md: str | None = None,
                             with open(out_path, 'wb') as f:
                                 _ = f.write(it['shape'].image.blob)
                             image_index.append({'page': pi, 'idx': img_no, 'file': new_name})
-                            rel = _md_relpath(asset_root / new_name, md_path.parent)
+                            rel = rel_path(md_path.parent, asset_root / new_name)
                             pic_lines.append(f'![Image]({rel})')
                         md_lines = diag_lines + pic_lines
                         slide_markdowns.append(
@@ -1154,7 +1102,7 @@ def convert(input_pptx: str, output_md: str | None = None,
                     _ = f.write(it['shape'].image.blob)
                 image_index.append({'page': pi, 'idx': img_no, 'file': new_name})
                 # Use a relative path so the md is portable
-                rel = _md_relpath(asset_root / new_name, md_path.parent)
+                rel = rel_path(md_path.parent, asset_root / new_name)
                 md_lines.append(f'![Image]({rel})')
                 md_lines.append('')
 

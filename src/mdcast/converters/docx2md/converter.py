@@ -20,6 +20,8 @@ import unicodedata
 from pathlib import Path
 from typing import TYPE_CHECKING, cast, final
 
+from mdcast.converters.common import clean_text, prepare_asset_dir
+
 try:
     from docx import Document
     from docx.document import Document as _Document
@@ -48,37 +50,6 @@ StyleKey = tuple[bool, bool, bool, str | None]
 _REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _DRAW_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 _VML_NS = "{urn:schemas-microsoft-com:vml}"
-
-
-# ---------------------------------------------------------------------------
-# Text cleaning
-# ---------------------------------------------------------------------------
-
-_CONTROL_RE = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u0080-\u009f]")
-_FORMAT_CHARS_RE = re.compile(
-    r"[\u200b-\u200f\u2028-\u202f\ufeff]"
-)
-
-
-def _clean_text(text: str) -> str:
-    """Remove invisible / control characters and normalize whitespace.
-
-    Word line breaks (``<w:br/>`` / ``<w:cr/>``) and soft wraps inside table
-    cells are exposed by python-docx as literal ``\\n`` / ``\\r`` characters.
-    Left in place they split a Markdown table row (or any block) across
-    several physical lines, which breaks GFM table parsing. We convert them
-    to ordinary spaces and then collapse runs of spaces.
-    """
-    if not text:
-        return ""
-    text = text.replace("\u000b", " ").replace("\u000c", " ").replace("\u00a0", " ")
-    # Normalize newlines (from Word line breaks / cell soft wraps) to spaces
-    # so they never break a Markdown table row onto multiple physical lines.
-    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-    text = _CONTROL_RE.sub("", text)
-    text = _FORMAT_CHARS_RE.sub("", text)
-    text = re.sub(r"  +", " ", text)
-    return text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +148,7 @@ def _runs_markdown(runs: list[Run], keep_emphasis: bool = True) -> str:
     identical inline formatting so adjacent bold runs aren't double-wrapped."""
     segments: list[tuple[StyleKey, str]] = []
     for run in runs:
-        text = _clean_text(run.text)
+        text = clean_text(run.text)
         if not text:
             continue  # empty run: drop, does not break merge boundary
         key = _run_style(run)
@@ -465,12 +436,7 @@ def _extract_images(doc: _Document, asset_dir: Path) -> dict[str, str]:
     Returns ``{rId: filename}`` mapping.
     """
     image_map: dict[str, str] = {}
-    if asset_dir.exists():
-        for f in asset_dir.iterdir():
-            if f.is_file():
-                f.unlink()
-    else:
-        asset_dir.mkdir(parents=True, exist_ok=True)
+    prepare_asset_dir(asset_dir)
 
     for rel in doc.part.rels.values():
         if "image" not in rel.reltype:
@@ -579,7 +545,7 @@ def _render_table(table: Table) -> list[str]:
     for row_idx, cells in enumerate(header_cells if header_cells else []):
         row_data: list[str] = []
         for cell in cells:
-            cell_text = _clean_text(cell.text)
+            cell_text = clean_text(cell.text)
             row_data.append(cell_text)
         # Pad row to max_cols
         while len(row_data) < max_cols:
@@ -703,12 +669,7 @@ def convert(
     asset_prefix = asset_dir.name
 
     # Clear old assets
-    if asset_dir.exists():
-        for f in asset_dir.iterdir():
-            if f.is_file():
-                f.unlink()
-    else:
-        asset_dir.mkdir(parents=True, exist_ok=True)
+    prepare_asset_dir(asset_dir)
 
     # Extract images
     image_map = _extract_images(doc, asset_dir)

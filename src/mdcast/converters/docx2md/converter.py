@@ -18,7 +18,7 @@ import string
 import sys
 import unicodedata
 from pathlib import Path
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, cast, final
 
 try:
     from docx import Document
@@ -31,13 +31,14 @@ except ImportError:
 try:
     from PIL import Image as PILImage
 except ImportError:
-    PILImage = None  # type: ignore[assignment]
+    PILImage = None
 
 if TYPE_CHECKING:
+    from docx.oxml.document import CT_Document
     from docx.table import Table
     from docx.text.paragraph import Paragraph
     from docx.text.run import Run
-    from lxml.etree import _Element
+    from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
 
 # Inline style key for a run: (bold, italic, code_style, href)
 StyleKey = tuple[bool, bool, bool, str | None]
@@ -222,8 +223,10 @@ def _list_level(paragraph: Paragraph) -> int:
     if numPr is None:
         return -1
     ilvl = numPr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ilvl")
-    if ilvl is not None and ilvl.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val") is not None:
-        return int(ilvl.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val"))
+    if ilvl is not None:
+        val = ilvl.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val")
+        if val is not None:
+            return int(val)
     return 0
 
 
@@ -719,7 +722,7 @@ def convert(
 
     # Process body elements
     # We process Document.body elements in order to handle mixed paragraphs/tables
-    body = doc.element.body
+    body = cast("list[_Element]", cast("object", cast("CT_Document", doc.element).body))
 
     for child in body:
         tag = child.tag

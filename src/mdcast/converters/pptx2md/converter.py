@@ -42,10 +42,32 @@ import subprocess
 import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+if TYPE_CHECKING:
+    # python-pptx ships no type stubs, so its objects are referenced only in
+    # annotations (as Any) to avoid `Unknown`-cascading diagnostics.
+    from pptx import Presentation
+
+# Alias for the untyped python-pptx shape/slide objects. Explicitly `Any` so
+# the type checker treats them as intentionally-untyped rather than `Unknown`,
+# which keeps attribute access (`shape.top`, `slide.shapes`, ...) from
+# producing hundreds of `reportUnknown*` warnings.
+Shape = Any
+
+# python-pptx's `MSO_SHAPE_TYPE` enum ships no type stubs, so member access
+# (e.g. `MSO_SHAPE_TYPE.GROUP`) is inferred as `Unknown` and cascades into
+# `reportUnknown*` warnings wherever the value is compared or stored. Bind the
+# members we use to local constants with an explicit `MSO_SHAPE_TYPE` annotation
+# so every reference is concretely typed.
+GROUP: MSO_SHAPE_TYPE = MSO_SHAPE_TYPE.GROUP
+PICTURE: MSO_SHAPE_TYPE = MSO_SHAPE_TYPE.PICTURE
+TABLE: MSO_SHAPE_TYPE = MSO_SHAPE_TYPE.TABLE
+LINE: MSO_SHAPE_TYPE = MSO_SHAPE_TYPE.LINE
+AUTO_SHAPE: MSO_SHAPE_TYPE = MSO_SHAPE_TYPE.AUTO_SHAPE
+TEXT_BOX: MSO_SHAPE_TYPE = MSO_SHAPE_TYPE.TEXT_BOX
 
 # --- Shared data types -------------------------------------------------------
 # A slide content item collected from the shape tree. It is heterogeneous — a
@@ -309,14 +331,14 @@ def _crop_rendered_image_to_bbox(image_path: str,
         pass
 
 
-def _shape_top(shape) -> int:
+def _shape_top(shape: Shape) -> int:
     try:
         return int(shape.top or 0)
     except Exception:
         return 0
 
 
-def _shape_left(shape) -> int:
+def _shape_left(shape: Shape) -> int:
     try:
         return int(shape.left or 0)
     except Exception:
@@ -372,7 +394,7 @@ def _md_relpath(target: Path, base: Path) -> str:
     return os.path.relpath(target, base).replace('\\', '/')
 
 
-def _shape_text(shape) -> str:
+def _shape_text(shape: Shape) -> str:
     if not shape.has_text_frame:
         return ''
     paras = []
@@ -384,7 +406,7 @@ def _shape_text(shape) -> str:
     return _clean_text('\n'.join(paras).strip())
 
 
-def _collect_items(shape, page: int, offset_top: int = 0, offset_left: int = 0) -> list[SlideItem]:
+def _collect_items(shape: Shape, page: int, offset_top: int = 0, offset_left: int = 0) -> list[SlideItem]:
     """Recursively walk shape tree, collecting metadata for text and pictures.
 
     Pictures are NOT written to disk here. Each picture item carries its
@@ -395,10 +417,10 @@ def _collect_items(shape, page: int, offset_top: int = 0, offset_left: int = 0) 
     left = offset_left + _shape_left(shape)
     items = []
     st = shape.shape_type
-    if st == MSO_SHAPE_TYPE.GROUP:
+    if st == GROUP:
         for sub in shape.shapes:
             items.extend(_collect_items(sub, page, top, left))
-    elif st == MSO_SHAPE_TYPE.PICTURE:
+    elif st == PICTURE:
         try:
             blob = shape.image.blob
             ext = shape.image.ext
@@ -413,7 +435,7 @@ def _collect_items(shape, page: int, offset_top: int = 0, offset_left: int = 0) 
         items.append({'kind': 'img', 'hash': h, 'ext': ext,
                       'top': top, 'left': left, 'width': w, 'height': hgt,
                       'shape': shape})
-    elif st == MSO_SHAPE_TYPE.TABLE:
+    elif st == TABLE:
         rows_data = []
         num_cols = 0
         for row in shape.table.rows:
@@ -431,7 +453,7 @@ def _collect_items(shape, page: int, offset_top: int = 0, offset_left: int = 0) 
         if text:
             items.append({'kind': 'text', 'text': text, 'top': top, 'left': left,
                           'w': int(shape.width or 0), 'h': int(shape.height or 0),
-                          'st': MSO_SHAPE_TYPE.TABLE})
+                          'st': TABLE})
     elif shape.has_text_frame:
         text = _shape_text(shape)
         if text:
@@ -606,19 +628,19 @@ def _is_master_background(item: SlideItem, total_slides: int,
 SHAPE_DIAGRAM_THRESHOLD = 15
 
 
-def _count_descendant_shapes(shape, type_filter: set[MSO_SHAPE_TYPE]) -> int:
+def _count_descendant_shapes(shape: Shape, type_filter: set[MSO_SHAPE_TYPE]) -> int:
     """Recursively count shapes of the given types under ``shape``."""
     total = 0
     st = shape.shape_type
     if st in type_filter:
         total += 1
-    if st == MSO_SHAPE_TYPE.GROUP:
+    if st == GROUP:
         for sub in shape.shapes:
             total += _count_descendant_shapes(sub, type_filter)
     return total
 
 
-def _slide_has_diagram(slide) -> bool:
+def _slide_has_diagram(slide: Shape) -> bool:
     """Check if a slide should be rendered as a diagram image.
 
     Triggers when the slide has either:
@@ -629,18 +651,18 @@ def _slide_has_diagram(slide) -> bool:
     """
     # 1) Connector-based diagram (existing behaviour).
     for shape in slide.shapes:
-        if shape.shape_type == MSO_SHAPE_TYPE.LINE:
+        if shape.shape_type == LINE:
             return True
     # 2) Shape-density heuristic: SmartArt / vector diagrams usually have
     #    many AUTO_SHAPE nodes even without explicit LINE connectors.
     auto_count = 0
     for shape in slide.shapes:
         auto_count += _count_descendant_shapes(
-            shape, {MSO_SHAPE_TYPE.AUTO_SHAPE})
+            shape, {AUTO_SHAPE})
     return auto_count >= SHAPE_DIAGRAM_THRESHOLD
 
 
-def _compute_flowchart_bbox(slide) -> tuple[int, int, int, int] | None:
+def _compute_flowchart_bbox(slide: Shape) -> tuple[int, int, int, int] | None:
     """Bounding box (left, top, right, bottom) in EMU of the flowchart itself.
 
     Built from LINE connectors **and** the AUTO_SHAPE nodes those connectors
@@ -662,7 +684,7 @@ def _compute_flowchart_bbox(slide) -> tuple[int, int, int, int] | None:
     # meet a node edge exactly, but a small gap is common.
     tol = 100_000
 
-    def intersects(a, b) -> bool:
+    def intersects(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
         return not (a[2] < b[0] - tol or a[0] > b[2] + tol or
                     a[3] < b[1] - tol or a[1] > b[3] + tol)
 
@@ -678,14 +700,14 @@ def _compute_flowchart_bbox(slide) -> tuple[int, int, int, int] | None:
     # Pass 1: collect every connector bbox (so we can test node adjacency).
     conn: list[tuple[int, int, int, int]] = []
 
-    def collect_conn(shape, off_l: int, off_t: int) -> None:
+    def collect_conn(shape: Shape, off_l: int, off_t: int) -> None:
         st = shape.shape_type
-        if st == MSO_SHAPE_TYPE.GROUP:
+        if st == GROUP:
             for sub in shape.shapes:
                 collect_conn(sub, off_l + int(shape.left or 0),
                              off_t + int(shape.top or 0))
             return
-        if st == MSO_SHAPE_TYPE.LINE:
+        if st == LINE:
             l = off_l + int(shape.left or 0)
             t = off_t + int(shape.top or 0)
             r = l + int(shape.width or 0)
@@ -697,9 +719,9 @@ def _compute_flowchart_bbox(slide) -> tuple[int, int, int, int] | None:
 
     # Pass 2: expand the bbox with connectors and every node a connector
     # touches (a node whose bbox overlaps a connector bbox within `tol`).
-    def collect_nodes(shape, off_l: int, off_t: int) -> None:
+    def collect_nodes(shape: Shape, off_l: int, off_t: int) -> None:
         st = shape.shape_type
-        if st == MSO_SHAPE_TYPE.GROUP:
+        if st == GROUP:
             gl = off_l + int(shape.left or 0)
             gt = off_t + int(shape.top or 0)
             gr = gl + int(shape.width or 0)
@@ -714,7 +736,7 @@ def _compute_flowchart_bbox(slide) -> tuple[int, int, int, int] | None:
             for sub in shape.shapes:
                 collect_nodes(sub, gl, gt)
             return
-        if st == MSO_SHAPE_TYPE.AUTO_SHAPE:
+        if st == AUTO_SHAPE:
             l = off_l + int(shape.left or 0)
             t = off_t + int(shape.top or 0)
             r = l + int(shape.width or 0)
@@ -732,7 +754,7 @@ def _compute_flowchart_bbox(slide) -> tuple[int, int, int, int] | None:
     return (bbox[0], bbox[1], bbox[2], bbox[3])
 
 
-def _extract_lanes(slide, items: list[SlideItem]) -> list[Lane]:
+def _extract_lanes(slide: Shape, items: list[SlideItem]) -> list[Lane]:
     """Group items on a diagram slide into swimlanes using GROUP shapes as boundaries.
 
     Returns a list of lane dicts: {'name': str, 'items': [item, ...]}.
@@ -741,7 +763,7 @@ def _extract_lanes(slide, items: list[SlideItem]) -> list[Lane]:
     # Collect GROUP positions (swimlane headers).
     lanes_raw: list[Lane] = []
     for shape in slide.shapes:
-        if shape.shape_type != MSO_SHAPE_TYPE.GROUP:
+        if shape.shape_type != GROUP:
             continue
         # Find the first text inside the group — that's the lane name.
         lane_name = ''
@@ -791,7 +813,7 @@ def _extract_lanes(slide, items: list[SlideItem]) -> list[Lane]:
     return [g for g in grouped if g['items']]
 
 
-def _format_diagram_slide(slide, items: list[SlideItem]) -> tuple[list[str], bool]:
+def _format_diagram_slide(slide: Shape, items: list[SlideItem]) -> tuple[list[str], bool]:
     """Format a diagram slide as structured swimlane markdown.
 
     Returns (md_lines, True) on success, (md_lines, False) if fallback to flat text.
@@ -892,12 +914,12 @@ def convert(input_pptx: str, output_md: str | None = None,
                 f.unlink()
     asset_root.mkdir(parents=True, exist_ok=True)
 
-    prs = Presentation(str(src))
+    prs: Shape = Presentation(str(src))
     image_index: list[ImageRef] = []
     slide_markdowns: list[str] = []
 
-    slide_w = prs.slide_width or 0
-    slide_h = prs.slide_height or 0
+    slide_w: int = prs.slide_width or 0
+    slide_h: int = prs.slide_height or 0
 
     # Phase 1: collect items per slide and every picture's content hash.
     slide_items: dict[int, list[SlideItem]] = {}
@@ -919,7 +941,7 @@ def convert(input_pptx: str, output_md: str | None = None,
     total_slides = len(prs.slides)
 
     # Build a lookup so we can access the original slide objects in Phase 2.
-    slides_lookup: dict[int, Any] = {}
+    slides_lookup: dict[int, Shape] = {}
     for pi, slide in enumerate(prs.slides, 1):
         slides_lookup[pi] = slide
 
@@ -1018,7 +1040,7 @@ def convert(input_pptx: str, output_md: str | None = None,
                     # descriptions) plus any shape text that sits clearly to
                     # the LEFT of the flowchart (a side column). Everything
                     # else lives inside the diagram and is left to the image.
-                    if (it.get('st') == MSO_SHAPE_TYPE.TEXT_BOX
+                    if (it.get('st') == TEXT_BOX
                             or it.get('left', 0) < fb[0] - gap):
                         descriptive.append(it)
 

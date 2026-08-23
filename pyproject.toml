@@ -7,17 +7,17 @@ name = "mdcast-cli"
 version = "0.1.0"
 description = "A CLI tool to convert Markdown to DOCX and vice versa"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
-    "python-docx>=0.8.11",
-    "Pillow>=9.0",
+    "python-docx>=1.2.0",
+    "python-pptx>=1.0.0",
+    "Pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
 vector = [
-    "pillow-emf>=0.2",
-    "PyMuPDF>=1.20",
+    "PyMuPDF>=1.24.0",
 ]
 
 [project.scripts]
@@ -32,7 +32,10 @@ testpaths = ["tests", "src/mdcast/converters/docx2md/tests"]
 # and deliberately-optional TypedDict fields used throughout the converters.
 # These are not real code defects, so they're silenced project-wide to keep
 # the IDE/linter output focused on genuine issues.
-reportMissingImports = false
-reportMissingModuleSource = false
 reportTypedDictNotRequiredAccess = false
 reportExplicitAny = false
+reportAny = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false

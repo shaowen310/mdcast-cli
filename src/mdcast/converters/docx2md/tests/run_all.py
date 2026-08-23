@@ -14,8 +14,8 @@ Dependencies:
     pip install python-docx Pillow
 
 Note: On Windows, EMF/WMF vector diagrams are rendered to PNG via the built-in
-GDI API (no extra package). On other platforms, install ``pillow-emf`` (EMF)
-and/or ``PyMuPDF`` so vector diagrams still convert to viewable PNG.
+GDI API (no extra package). On other platforms, install ``PyMuPDF`` so vector
+diagrams still convert to viewable PNG.
 """
 
 from __future__ import annotations

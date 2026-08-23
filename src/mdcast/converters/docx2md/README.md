@@ -57,7 +57,7 @@ excluded.
 
 EMF/WMF vector images are converted to PNG automatically:
 - **Windows**: rendered via the built-in GDI API (no extra package needed)
-- **Other platforms**: install `pillow-emf` (EMF) and/or `PyMuPDF` to convert.
+- **Other platforms**: install `PyMuPDF` to convert.
   If no converter is available, the vector file is left as-is and the reference
   is still emitted (but may not render in all viewers)
 
@@ -93,7 +93,7 @@ pip install "mdcast-cli[vector]"
 ```
 
 - **Required**: `python-docx`, `Pillow`
-- **Optional** (`[vector]` extras): `pillow-emf`, `PyMuPDF` — for EMF/WMF → PNG conversion on non-Windows platforms
+- **Optional** (`[vector]` extras): `PyMuPDF` — for EMF/WMF → PNG conversion on non-Windows platforms
 
 ## Output contract
 

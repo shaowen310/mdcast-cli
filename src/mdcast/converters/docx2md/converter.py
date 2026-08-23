@@ -249,7 +249,7 @@ def _convert_vector_to_png(src: Path, dst: Path) -> bool:
 
     Dispatch by format:
       * EMF  → Windows GDI (``ctypes``, no extra dependency) on win32;
-               otherwise try ``pillow-emf`` if installed.
+               otherwise try ``PyMuPDF`` (``fitz``) if installed.
       * WMF  → Pillow's native WMF support, then ``PyMuPDF`` (``fitz``).
 
     Falls back gracefully (returns ``False``) when no converter is available so
@@ -488,7 +488,7 @@ def _extract_images(doc: _Document, asset_dir: Path) -> dict[str, str]:
             else:
                 print(
                     "⚠️ EMF/WMF not converted (on Windows it renders via GDI; "
-                    + f"otherwise install pillow-emf / PyMuPDF): {target.name}",
+                    + f"otherwise install PyMuPDF): {target.name}",
                     file=sys.stderr,
                 )
         image_map[rId] = final_name

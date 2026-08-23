@@ -16,6 +16,10 @@ pip install "mdcast-cli[vector]"
 ```bash
 git clone <repo-url>
 cd mdcast-cli
+
+pip install -e .
+
+# 非 Windows 平台需要矢量图转换支持
 pip install -e ".[vector]"
 ```
 
